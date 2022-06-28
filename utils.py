@@ -22,7 +22,7 @@ def using(point=""):
            '''%(point,usage[0],usage[1],
                 usage[2]/1024.0 )
 
-def loadData(path, num_files = 1):
+def loadData(path, num_files = -1):
     f_edges_label = glob.glob(path + "*edges_labels.pkl" )
     f_edges = glob.glob(path + "*edges.pkl" )
     f_nodes_features = glob.glob(path + "*node_features.pkl" )
@@ -31,7 +31,11 @@ def loadData(path, num_files = 1):
     nodes_features = []
 
     for i_f, _ in enumerate(f_edges_label):
-        if(i_f <= num_files):
+        if(num_files == -1):
+            n = len(f_edges_label)
+        else:
+            n = num_files
+        if(i_f <= n):
             f = f_edges_label[i_f]
             with open(f, 'rb') as fb:
                 edges_label.append(pickle.load(fb))

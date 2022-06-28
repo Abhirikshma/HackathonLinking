@@ -40,7 +40,7 @@ mkdir_p(outputLossFunction)
 pickle_data = './dataset_closeByDoublePion/'
 
 print("===== Loading Files ...")
-el, e, nf = loadData(pickle_data)
+el, e, nf = loadData(pickle_data, num_files = 10)
 print("===== Loaded!")
 # process data
 edge_data = []
@@ -73,7 +73,7 @@ print(using("===== Allocated Memory"))
 
 # split into train, val, test sets
 
-trainRatio = 0.01
+trainRatio = 0.8
 valRatio = 0.1
 testRatio = 0.1
 
