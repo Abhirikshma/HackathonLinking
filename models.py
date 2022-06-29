@@ -13,21 +13,24 @@ from torch_geometric.loader import DataLoader
 
 
 class GraphNet(nn.Module):
-    def __init__(self, input_dim = 8, hidden_dim = 64, output_dim = 1, aggr = 'add', niters = 2):
+    def __init__(self, input_dim = 8, hidden_dim = 64, output_dim = 1, aggr = 'add', niters = 3):
         super(GraphNet, self).__init__()
         
         # transform to latent space
         self.inputnetwork = nn.Sequential(
             nn.Linear(input_dim, hidden_dim),
             nn.BatchNorm1d(hidden_dim),
-            nn.Tanh()
+            nn.Tanh(),
+            nn.Dropout(0.2),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU()
         )
         
         # to compute messages
         convnetwork = nn.Sequential(
             nn.Linear(2 * hidden_dim, 2 * hidden_dim),
             nn.ReLU(),
-            nn.Dropout(),
+            nn.Dropout(0.2),
             nn.Linear(2 * hidden_dim, hidden_dim),
             nn.ReLU()
         )
@@ -37,7 +40,10 @@ class GraphNet(nn.Module):
         
         # edge features from node embeddings for classification
         self.edgenetwork = nn.Sequential(
-            nn.Linear(2 * hidden_dim, output_dim),
+            nn.Linear(2 * hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(0.2),
+            nn.Linear(hidden_dim, output_dim),
             nn.Sigmoid()
         )
         
@@ -50,7 +56,8 @@ class GraphNet(nn.Module):
         H = self.inputnetwork(X)
         #print(f"size after inputnet {H.size()}")
         for i in range(self.niters):
-            H = self.graphconv(H, data.edge_index)
+            (prepared_edges, _) = Utils.add_self_loops(data.edge_index)
+            H = self.graphconv(H, Utils.to_undirected(prepared_edges))
             #print(f"size of H after {i}th iter {H.size()}")
             
         src, dst = data.edge_index
@@ -60,3 +67,19 @@ class GraphNet(nn.Module):
         #print(f"score size {(H[src] * H[dst]).sum(dim=-1)}")
         #return (H[src] * H[dst]).sum(dim=-1)
         return self.edgenetwork(torch.cat([H[src], H[dst]], dim=-1)).squeeze(-1)
+    
+# focal loss
+def focal_loss(bce_loss, targets, gamma, alpha):
+    """Binary focal loss, mean.
+
+    Per https://discuss.pytorch.org/t/is-this-a-correct-implementation-for-focal-loss-in-pytorch/43327/5 with
+    improvements for alpha.
+    :param bce_loss: Binary Cross Entropy loss, a torch tensor.
+    :param targets: a torch tensor containing the ground truth, 0s and 1s.
+    :param gamma: focal loss power parameter, a float scalar.
+    :param alpha: weight of the class indicated by 1, a float scalar.
+    """
+    p_t = torch.exp(-bce_loss)
+    alpha_tensor = (1 - alpha) + targets * (2 * alpha - 1)  # alpha if target = 1 and 1 - alpha if target = 0
+    f_loss = alpha_tensor * (1 - p_t) ** gamma * bce_loss
+    return f_loss.mean()

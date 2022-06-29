@@ -5,7 +5,7 @@ import uproot as uproot
 import matplotlib.pyplot as plt
 import networkx as nx
 from numba import jit
-from models import GraphNet
+from models import GraphNet, focal_loss
 import torch
 from torch import nn
 import torch.nn.functional as F
@@ -24,7 +24,7 @@ from utils import mkdir_p, using, loadData
 parser = argparse.ArgumentParser(description='Process some integers.')
 parser.add_argument('--output', type=str,
                     help='model output path')
-parser.add_argument('--epochs', type=int, help="Training epochs")
+parser.add_argument('--epochs', type=int, default=20, help="Training epochs")
 parser.add_argument('--batch', type=int, default=32, help='Batch size')
 
 args = parser.parse_args()
@@ -109,8 +109,9 @@ for epoch in range(epochs):
         optimizer.zero_grad()
         sample.to(device)
         out = model(sample)
-        weight = [1. if l > 0.9 else 1.1 for l in sample.edge_label] # weigh up false edges
-        loss = F.binary_cross_entropy(out, sample.edge_label, weight=torch.tensor(weight))
+        #weight = [1. if l > 0.9 else 1.1 for l in sample.edge_label] # weigh up false edges
+        bce_loss = F.binary_cross_entropy(out, sample.edge_label)
+        loss = focal_loss(bce_loss, sample.edge_label, 2, 0.4)
         batchloss.append(loss.item())
         loss.backward()
         optimizer.step()
@@ -121,7 +122,8 @@ for epoch in range(epochs):
         batchloss = []
         for sample in valLoader:
             out = model(sample)
-            val_loss = F.binary_cross_entropy(out, sample.edge_label)
+            val_bce = F.binary_cross_entropy(out, sample.edge_label)
+            val_loss = focal_loss(val_bce, sample.edge_label, 2, 0.4)
             batchloss.append(val_loss.item())
             
     val_loss_history.append(np.mean(batchloss))
