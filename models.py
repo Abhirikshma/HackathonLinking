@@ -10,6 +10,7 @@ import torch_geometric.transforms as T
 from torch_geometric.nn import EdgeConv
 from torch_geometric.data import Data
 from torch_geometric.loader import DataLoader
+import torch_geometric.utils as Utils
 
 
 class GraphNet(nn.Module):
