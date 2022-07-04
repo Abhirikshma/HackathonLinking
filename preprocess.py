@@ -1,6 +1,7 @@
 import os.path as osp
 from utils import loadData
 import numpy as np
+from sklearn.preprocessing import StandardScaler
 import pickle
 import awkward as ak
 import torch
@@ -29,12 +30,26 @@ for i,X in enumerate(nf):
             edge_data.append(e[i][ev])
             edge_label.append([np.float32(edg) for edg in el[i][ev]])
             for field in X[ev].fields:
-                X_ev.append(ak.to_numpy(X[ev][field]))
+                X_ev.append(np.float32(ak.to_numpy(X[ev][field])))
             node_data.append(X_ev)
 
 data_list = []
+print(f"{len(node_data)} total events in dataset")
 for ev in range(len(node_data)):
-    x = torch.from_numpy(np.array(node_data[ev]).T)
+    x_np = np.array(node_data[ev]).T
+    x_coord_slice = x_np[:, [0,1,2]]
+    x_rest_slice = x_np[:, [9,10,11,12,13,14]]
+    
+    scaler = StandardScaler()
+    scaler.fit(x_coord_slice)
+    x_coord_norm = scaler.transform(x_coord_slice)
+
+    scaler.fit(x_rest_slice)
+    x_rest_norm = scaler.transform(x_rest_slice)
+     
+    x_norm = np.concatenate((x_coord_norm, x_np[:,[3,4,5,6,7,8]], x_rest_norm), axis=1)
+    
+    x = torch.from_numpy(x_norm)
     e_label = torch.from_numpy(np.array(edge_label[ev]))
     edge_index = torch.from_numpy(edge_data[ev])
     data = Data(x=x, num_nodes=torch.tensor(x.shape[0]), edge_index=edge_index, edge_label=e_label)
@@ -59,3 +74,4 @@ testDataset = data_list[nTrain+nVal:]       # test datase
 torch.save(trainDataset, './dataProcessed/dataTraining.pt')
 torch.save(valDataset, './dataProcessed/dataVal.pt')
 torch.save(testDataset, './dataProcessed/dataTest.pt')
+print("===== Saved dataset!")
