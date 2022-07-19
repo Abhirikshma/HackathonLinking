@@ -1,5 +1,5 @@
 import os.path as osp
-from utils import loadData
+from utils import loadData, mkdir_p
 import numpy as np
 from sklearn.preprocessing import StandardScaler
 import pickle
@@ -9,7 +9,7 @@ from torch_geometric.data import Dataset, download_url, InMemoryDataset
 from torch_geometric.data import Data
 from torch_geometric.loader import DataLoader
 
-pickle_data = './dataset_closeByDoublePion/'
+pickle_data = './dataset_closeByDoublePion_improved/'
 
 
 print("===== Loading Files ...")
@@ -39,7 +39,7 @@ data_list = []
 print(f"{len(node_data)} total events in dataset")
 
 trainRatio = 0.8
-valRatio = 0.1
+valRatio = 0.8
 testRatio = 0.1
 
 nSamples = len(node_data)
@@ -49,8 +49,8 @@ nVal = int( valRatio * nSamples )
 
 for ev in range(len(node_data[:nTrain+nVal])):
     x_np = np.array(node_data[ev]).T
-    x_coord_slice = x_np[:, [0,1,2]]
-    x_rest_slice = x_np[:, [9,10,11]]
+    x_coord_slice = x_np[:, [0,1,2]] # barycenter x, y, z
+    x_rest_slice = x_np[:, [9,10,11]] # size, raw_e, raw_em_e
     
     scaler = StandardScaler()
     scaler.fit(x_coord_slice)
@@ -71,19 +71,6 @@ for ev in range(len(node_data[:nTrain+nVal])):
 test_data_list = []
 for ev in range(len(node_data[nTrain+nVal:])):
     x_np = np.array(node_data[ev]).T
-    '''
-    x_coord_slice = x_np[:, [0,1,2]]
-    x_rest_slice = x_np[:, [9,10,11,12,13,14]]
-    
-    scaler = StandardScaler()
-    scaler.fit(x_coord_slice)
-    x_coord_norm = scaler.transform(x_coord_slice)
-
-    scaler.fit(x_rest_slice)
-    x_rest_norm = scaler.transform(x_rest_slice)
-     
-    x_norm = np.concatenate((x_coord_norm, x_np[:,[3,4,5,6,7,8]], x_rest_norm), axis=1)
-    '''
     
     #x = torch.from_numpy(x_np)
     #e_label = torch.from_numpy(np.array(edge_label[ev]))
@@ -98,10 +85,10 @@ trainDataset = data_list[:nTrain]           # training dataset
 valDataset = data_list[nTrain:]  # validation dataset
 testDataset = test_data_list       # test datase
 
-# dataTraining, slicesTraining = InMemoryDataset.collate(trainDataset)
-# dataVal, slicesVal = InMemoryDataset.collate(valDataset)
-# dataTest, slicesTest = InMemoryDataset.collate(testDataset)
-torch.save(trainDataset, './dataProcessed/dataTraining.pt')
-torch.save(valDataset, './dataProcessed/dataVal.pt')
-torch.save(testDataset, './dataProcessed/dataTest.pt')
+out_path = "./dataProcessed_closeByDoublePion_improved/"
+mkdir_p(out_path)
+
+torch.save(trainDataset, out_path + "dataTraining.pt")
+torch.save(valDataset, out_path + "dataVal.pt")
+torch.save(testDataset, out_path + "dataTest.pt")
 print("===== Saved dataset!")

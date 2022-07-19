@@ -17,6 +17,8 @@ from scipy import linalg
 import networkx as nx
 import mplhep as hep
 from numba import jit
+import matplotlib.colors
+from pylab import cm
 #from models import GraphNet
 plt.style.use(hep.style.CMS)
 
@@ -103,6 +105,18 @@ def normalize_and_get_data(data_list, ev):
     data = Data(x=x_ev, num_nodes=torch.tensor(x_ev.shape[0]), edge_index=edge_index, edge_label=edge_label)
     return data, mean, std
 
+# list of indices of best matched simts to all ts in an event
+def get_truth_labels(data_list, ev):
+    data_list_ev = data_list[ev]
+    x_np = data_list_ev[0]
+    x_best_simts = x_np[:, 12]
+    return x_best_simts
+
+# candidates containing the trackster
+def get_cand_labels(data_list, ev):
+    data_list_ev = data_list[ev]
+    return data_list_ev[0][:, 13]
+
 def truth_pairs(model, data_list, ev, thr=0.5):
     data_ev, mean, std = normalize_and_get_data(data_list, ev)
     truth_edge_index = data_ev.edge_index
@@ -163,18 +177,25 @@ def scores_reco_to_sim(predicted_clusters, truth_cluster_labels, truth_cluster_e
     return reco_sim_scores, best_sim_matches, pred_cluster_energies
 
 # Load the dataset
-testDataset = torch.load("/eos/user/a/abhiriks/SWAN_projects/TICLv4graph/test/HackathonLinking/dataProcessed/dataTest.pt")
+testDataset = torch.load("/eos/user/a/abhiriks/SWAN_projects/TICLv4graph/test/HackathonLinking/dataProcessed_improved/dataTest.pt")
 
 # Load the model
 modelLoad = GraphNet()
-modelLoad.load_state_dict(torch.load("/eos/user/a/abhiriks/SWAN_projects/TICLv4graph/test/HackathonLinking/model/trackster_graphconv.pt"))
+modelLoad.load_state_dict(torch.load("/eos/user/a/abhiriks/SWAN_projects/TICLv4graph/test/HackathonLinking/model/trackster_graphconv_improved_truth.pt"))
 modelLoad.eval()
 
 scores = []
+scores_cand = []
+pred_energies = []
+candidate_energies  = []
+
 more_truth_clusters = 0
 isolated_truth_cluster = 0
+events_processed = 0
+tot_truth_clusters = 0
+tot_clue3d_tracksters = 0
 
-for ev in range(len(testDataset[:1500])):
+for ev in range(len(testDataset)):
     if ev%100 == 0:
         print(f"event {ev}")
     t_node, t_pairs = truth_pairs(modelLoad, testDataset, ev, 0.5)
@@ -223,10 +244,31 @@ for ev in range(len(testDataset[:1500])):
         predicted_clusters[label].append(i)
 
     # Calculate truth clustering 
-    # (currently hacked from the edge labels; this has the problem 
+    
+    truth_cluster_labels = get_truth_labels(testDataset, ev)
+    num_truth_clusters = int(max(truth_cluster_labels)+1)
+    
+    tot_truth_clusters += num_truth_clusters
+    tot_clue3d_tracksters += len(truth_cluster_labels)
+
+    truth_clusters = [[] for i in range(num_truth_clusters)]
+
+    for t, l in enumerate(truth_cluster_labels):
+        truth_clusters[int(l)].append(t)
+        
+    # "clustering" from TICL Candidates
+    
+    cluster_labels_candidate = get_cand_labels(testDataset, ev)
+    clusters_candidate = [[] for i in range(int(max(cluster_labels_candidate))+1)]
+    for ts, cand in enumerate(cluster_labels_candidate):
+        clusters_candidate[int(cand)].append(ts)
+    
+    # (hacked from the edge labels; this has the problem 
     # that far away tracksters which do not have any edges to other 
     # tracksters in the input graph are treated as separate "clusters" this way.
     # should ideally be the best simSTS match from the associations)
+    
+    '''
     t_edges = []
     for p in t_pairs:
         t_edges.append([p[0].item(), p[1].item()])
@@ -253,7 +295,7 @@ for ev in range(len(testDataset[:1500])):
 
     if num_truth_clusters > 2 and lone_cluster:
         isolated_truth_cluster += 1
-        continue
+    '''
 
     # Validation score between every "super trackster" and simtrackster
     # a trackster is "in" it's best matched simtrackster
@@ -269,10 +311,23 @@ for ev in range(len(testDataset[:1500])):
             clusterE += E[t]
         truth_cluster_energies.append(clusterE)
 
+    # Super Trackster to sim TS (from CP) scores
     reco_sim_scores, best_sim_matches, pred_cluster_energies = scores_reco_to_sim(predicted_clusters, truth_cluster_labels, truth_cluster_energies, E)
+    
+    # TICL Candidate to sim TS (from CP) scores
+    cand_sim_scores, cand_best_sim_matches, cand_energies = scores_reco_to_sim(clusters_candidate, truth_cluster_labels, truth_cluster_energies, E)
 
     for s in reco_sim_scores:
         scores.append(s)
+    for s in cand_sim_scores:
+        scores_cand.append(s)
+        
+    for en in pred_cluster_energies:
+        pred_energies.append(en)
+    for en in cand_energies:
+        candidate_energies.append(en)
+        
+    events_processed += 1
     
     """ print(f"RECO-SIM scores : {reco_sim_scores}")
     print(f"Best SIM matches : {best_sim_matches}")
@@ -281,10 +336,49 @@ for ev in range(len(testDataset[:1500])):
 
 fig = plt.figure(figsize=(8, 8))
 ax = fig.add_subplot()
-ax.hist(scores)
+ax.hist(scores_cand, alpha=0.6, bins=20, label="TICL Candidate")
+ax.hist(scores, alpha=0.6, bins=20, label="GNN SuperTrackster")
 ax.set_xlabel(r"Score (Energy $\cap$ over $\cup$)", fontsize=16)
-ax.set_ylabel("Entries", fontsize=16)
-ax.set_title("Reco `Super`Trackster to SimTrackster from CP", fontsize=16)
+ax.set_ylabel(r"Entries", fontsize=16)
+#ax.set_title(r"Reco $\it{Super}$Trackster to SimTrackster from CP", fontsize=16)
+plt.yscale("log")
+plt.legend()
 plt.savefig("scores_histogram.png")
+
+fig = plt.figure(figsize=(8,8))
+ax = fig.add_subplot()
+ax.scatter(scores, pred_energies, marker=".")
+ax.set_xlabel(r"Score (Energy $\cap$ over $\cup$)", fontsize=16)
+ax.set_ylabel(r"Energy of $\it{Super}$Trackster [GeV]", fontsize=16)
+plt.savefig("EnergyVsScore.png")
+
+fig = plt.figure(figsize=(8,8))
+ax = fig.add_subplot()
+ax.scatter(scores_cand, candidate_energies, marker=".")
+ax.set_xlabel(r"Score (Energy $\cap$ over $\cup$)", fontsize=16)
+ax.set_ylabel(r"Energy of TICL Candidate [GeV]", fontsize=16)
+plt.savefig("EnergyVsScore_candidate.png")
+
+fig = plt.figure(figsize=(10,8))
+ax = fig.add_subplot()
+h = ax.hist2d(scores, pred_energies, norm=matplotlib.colors.LogNorm(), cmap=cm.inferno, bins = 30, range = [[0., 1.],[0, max(pred_energies)]])
+ax.set_xlabel(r"Score (Energy $\cap$ over $\cup$)", fontsize=16)
+ax.set_ylabel(r"Energy of $\it{Super}$Trackster [GeV]", fontsize=16)
+fig.colorbar(h[3], ax=ax)
+plt.savefig("EnergyVsScore_hist2d.png")
+
+fig = plt.figure(figsize=(10,8))
+ax = fig.add_subplot()
+h = ax.hist2d(scores_cand, candidate_energies, norm=matplotlib.colors.LogNorm(), cmap=cm.inferno, bins = 30, range = [[0., 1.],[0, max(candidate_energies)]])
+ax.set_xlabel(r"Score (Energy $\cap$ over $\cup$)", fontsize=16)
+ax.set_ylabel(r"Energy of TICL Candidate [GeV]", fontsize=16)
+fig.colorbar(h[3], ax=ax)
+plt.savefig("EnergyVsScore_candidate_hist2d.png")
+
 print(f"{more_truth_clusters} events with >2 truth clusters")
 print(f"{isolated_truth_cluster} events with >2 truth clusters AND a truth cluster with one trackster")
+print(f"{len(scores)} SuperTracksters")
+print(f"{len(scores_cand)} TICL Candidates")
+print(f"{tot_clue3d_tracksters} CLUE3D tracksters")
+print(f"{tot_truth_clusters} total sim tracksters from CP")
+print(f"{events_processed} events")
