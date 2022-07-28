@@ -22,13 +22,17 @@ def using(point=""):
            '''%(point,usage[0],usage[1],
                 usage[2]/1024.0 )
 
-def loadData(path, num_files = -1):
+def loadData(path, num_files = -1, lc_data = False):
     f_edges_label = glob.glob(path + "*edges_labels.pkl" )
     f_edges = glob.glob(path + "*edges.pkl" )
     f_nodes_features = glob.glob(path + "*node_features.pkl" )
+    if lc_data:
+        f_energy_layer = glob.glob(path + "*energies_on_layers.pkl")
+    en_lay = []
     edges_label = []
     edges = []
     nodes_features = []
+    
 
     for i_f, _ in enumerate(f_edges_label):
         if(num_files == -1):
@@ -45,6 +49,13 @@ def loadData(path, num_files = -1):
             f = f_nodes_features[i_f]
             with open(f, 'rb') as fb:
                 nodes_features.append(pickle.load(fb))
+            if lc_data:
+                f = f_energy_layer[i_f]
+                try:
+                    with open(f, 'rb') as fb:
+                        en_lay.append(pickle.load(fb))
+                except:
+                    print(f"error in energy_on_layer {i_f}")
         else:
             break
-    return edges_label, edges, nodes_features
+    return edges_label, edges, nodes_features, en_lay
