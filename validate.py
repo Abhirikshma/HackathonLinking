@@ -21,6 +21,9 @@ import matplotlib.colors
 from pylab import cm
 #from models import GraphNet
 plt.style.use(hep.style.CMS)
+from utils import normalize_and_get_data
+from utils import get_truth_labels
+from utils import get_cand_labels
 
 class GraphNet_noLC(nn.Module):
     def __init__(self, input_dim = 12, hidden_dim = 64, output_dim = 1, aggr = 'add', niters = 4):
@@ -129,53 +132,7 @@ class GraphNet(nn.Module):
         src, dst = data.edge_index
         return self.edgenetwork(torch.cat([H[src], H[dst]], dim=-1)).squeeze(-1)
 
-# test dataset is not normalized before storing on disk
-# as the mean_ and scale_ are required for the 
-# inverse transformation
-def normalize_and_get_data(data_list, ev):
-    data_list_ev = data_list[ev]
-    x_np = data_list_ev[0]
-    x_coord_slice = x_np[:, [0,1,2]]
-    x_rest_slice = x_np[:, [9,10,11]]
-    x_en_lay_digest = data_list_ev[-1]
-    mean = []
-    std = []
-    scaler=StandardScaler()
-    scaler.fit(x_coord_slice)
-    x_coord_norm = scaler.transform(x_coord_slice)
-    mean.append(scaler.mean_)
-    std.append(scaler.scale_)
     
-    mean.append(np.zeros(6)) # for the unnormalized features
-    std.append(np.ones(6))
-    
-    scaler.fit(x_rest_slice)
-    x_rest_norm = scaler.transform(x_rest_slice)
-    mean.append(scaler.mean_)
-    std.append(scaler.scale_)
-    
-    mean = np.concatenate(mean, axis=-1)
-    std = np.concatenate(std, axis=-1)
-    
-    x_ev = torch.from_numpy(np.concatenate((x_coord_norm, x_np[:,[3,4,5,6,7,8]], x_rest_norm), axis=1))
-    edge_label = torch.from_numpy(data_list_ev[1])
-    edge_index = torch.from_numpy(data_list_ev[2])
-
-    data = Data(x=x_ev, num_nodes=torch.tensor(x_ev.shape[0]), edge_index=edge_index, edge_label=edge_label, en_hgcal_layers = torch.from_numpy(np.array(x_en_lay_digest)))
-    
-    return data, mean, std
-
-# list of indices of best matched simts to all ts in an event
-def get_truth_labels(data_list, ev):
-    data_list_ev = data_list[ev]
-    x_np = data_list_ev[0]
-    x_best_simts = x_np[:, 12]
-    return x_best_simts
-
-# candidates containing the trackster
-def get_cand_labels(data_list, ev):
-    data_list_ev = data_list[ev]
-    return data_list_ev[0][:, 13]
 
 def truth_pairs(model, data_list, ev, thr=0.5):
     data_ev, mean, std = normalize_and_get_data(data_list, ev)
